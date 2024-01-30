@@ -10,10 +10,10 @@ import java.util
 import scala.jdk.CollectionConverters.IterableHasAsJava
 
 object TestUtils {
-  def createChildOrder(parentId: Int, id: Int): ChildOrder = {
+  def createChildOrder(parentId: Int, id: Int, ric: String = "ric"): ChildOrder = {
     ChildOrder(parentId = parentId,
       id = id,
-      ric = "ric",
+      ric = ric,
       price = 1.22,
       quantity = 100,
       side = "Buy",

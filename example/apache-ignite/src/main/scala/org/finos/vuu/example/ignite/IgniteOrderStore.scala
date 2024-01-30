@@ -2,12 +2,16 @@ package org.finos.vuu.example.ignite
 
 import com.typesafe.scalalogging.StrictLogging
 import org.apache.ignite.cache.CachePeekMode
-import org.apache.ignite.cache.query.{IndexQuery, IndexQueryCriteriaBuilder, IndexQueryCriterion, SqlFieldsQuery}
+import org.apache.ignite.cache.query.{FieldsQueryCursor, IndexQuery, IndexQueryCriteriaBuilder, IndexQueryCriterion, SqlFieldsQuery}
 import org.apache.ignite.cluster.ClusterState
 import org.apache.ignite.{IgniteCache, Ignition}
 import org.finos.vuu.core.module.simul.model.{ChildOrder, OrderStore, ParentOrder}
+import org.finos.vuu.example.ignite.schema.IgniteEntitySchema
+import org.finos.vuu.example.ignite.order.ChildOrderSchema
 
+import java.util
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
 import scala.jdk.javaapi.CollectionConverters.asJava
 
@@ -21,6 +25,7 @@ object IgniteOrderStore {
    */
   def apply(clientMode: Boolean = true, persistenceEnabled: Boolean = false): IgniteOrderStore = {
     IgniteLocalConfig.setPersistenceEnabled(persistenceEnabled)
+    val childOrderSchema = ChildOrderSchema.create()
     val config = IgniteLocalConfig.create(clientMode = clientMode)
     val ignite = Ignition.getOrStart(config)
 
@@ -29,12 +34,13 @@ object IgniteOrderStore {
     val parentOrderCache = ignite.getOrCreateCache[Int, ParentOrder](IgniteLocalConfig.parentOrderCacheName)
     val childOrderCache = ignite.getOrCreateCache[Int, ChildOrder](IgniteLocalConfig.childOrderCacheName)
 
-    new IgniteOrderStore(parentOrderCache, childOrderCache)
+    new IgniteOrderStore(parentOrderCache, childOrderCache, childOrderSchema)
   }
 }
 
 class IgniteOrderStore(private val parentOrderCache: IgniteCache[Int, ParentOrder],
-                       private val childOrderCache: IgniteCache[Int, ChildOrder]) extends OrderStore with StrictLogging {
+                       private val childOrderCache: IgniteCache[Int, ChildOrder],
+                       val childOrderSchema: IgniteEntitySchema) extends OrderStore with StrictLogging {
 
   def storeParentOrder(parentOrder: ParentOrder): Unit = {
     parentOrderCache.put(parentOrder.id, parentOrder)
@@ -58,6 +64,33 @@ class IgniteOrderStore(private val parentOrderCache: IgniteCache[Int, ParentOrde
     parentOrderCache.get(id)
   }
 
+  def getDistinct(columnName: String, rowCount: Int): Iterable[String] = {
+    val query = new SqlFieldsQuery(s"select distinct $columnName from ChildOrder limit ?")
+    query.setArgs(rowCount)
+
+    val results = childOrderCache.query(query)
+
+    val (counter, buffer) = mapToString(results)
+
+    logger.info(s"Loaded Ignite ChildOrder column $columnName for $counter rows")
+
+    buffer
+  }
+
+  def getDistinct(columnName: String, startsWith: String, rowCount: Int): Iterable[String]  = {
+    val query = new SqlFieldsQuery(s"select distinct $columnName from ChildOrder where $columnName LIKE \'$startsWith%\' limit ?")
+    query.setArgs(rowCount)
+    logger.info(query.getSql)
+    val results = childOrderCache.query(query)
+
+    val (counter, buffer) = mapToString(results)
+
+    logger.info(s"Loaded Ignite ChildOrder column $columnName for $counter rows")
+
+    buffer
+
+  }
+
   def findChildOrder(sqlFilterQueries: String, sqlSortQueries: String, rowCount: Int, startIndex: Long): Iterable[ChildOrder] = {
     val whereClause = if(sqlFilterQueries == null || sqlFilterQueries.isEmpty) "" else s" where $sqlFilterQueries"
     val orderByClause = if(sqlSortQueries == null || sqlSortQueries.isEmpty) " order by id" else s" order by $sqlSortQueries"
@@ -76,8 +109,8 @@ class IgniteOrderStore(private val parentOrderCache: IgniteCache[Int, ParentOrde
     logger.info(s"Loaded Ignite ChildOrder for $counter rows, from index : $startIndex where $whereClause order by $sqlSortQueries")
 
     buffer
-
   }
+
   def findChildOrderFilteredBy(filterQueryCriteria: List[IndexQueryCriterion]): Iterable[ChildOrder] = {
   //  val filter: IgniteBiPredicate[Int, ChildOrder]  = (key, p) => p.openQty > 0
 
@@ -91,7 +124,6 @@ class IgniteOrderStore(private val parentOrderCache: IgniteCache[Int, ParentOrde
       .getAll.asScala
       .map(x => x.getValue)
   }
-
   def findChildOrderByParentId(parentId: Int): Iterable[ChildOrder] = {
     val query: IndexQuery[Int, ChildOrder] = new IndexQuery[Int, ChildOrder](classOf[ChildOrder])
 
@@ -121,6 +153,16 @@ class IgniteOrderStore(private val parentOrderCache: IgniteCache[Int, ParentOrde
       averagePrice = cols.get(13).asInstanceOf[Double],
       status = cols.get(14).asInstanceOf[String]
     )
+  }
+
+  private def mapToString(results: FieldsQueryCursor[util.List[_]]): (Int, ListBuffer[String]) = {
+    var counter = 0
+    val buffer = mutable.ListBuffer[String]()
+    results.forEach(row => {
+      buffer.addOne(row.get(0).asInstanceOf[String])
+      counter += 1
+    })
+    (counter, buffer)
   }
 
   def parentOrderCount(): Long = {

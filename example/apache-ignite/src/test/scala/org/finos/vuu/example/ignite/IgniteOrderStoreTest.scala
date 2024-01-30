@@ -3,6 +3,7 @@ package org.finos.vuu.example.ignite
 import org.apache.ignite.cache.query.IndexQueryCriteriaBuilder
 import org.apache.ignite.{Ignite, IgniteCache}
 import org.finos.vuu.core.module.simul.model.{ChildOrder, ParentOrder}
+import org.finos.vuu.example.ignite.order.ChildOrderSchema
 import org.scalatest.BeforeAndAfter
 import org.scalatest.funsuite.AnyFunSuiteLike
 import org.scalatest.matchers.should.Matchers
@@ -20,7 +21,7 @@ class IgniteOrderStoreTest extends AnyFunSuiteLike with BeforeAndAfter with Matc
     ignite = TestUtils.setupIgnite()
     parentOrderCache = ignite.getOrCreateCache("parentOrderCache")
     childOrderCache = ignite.getOrCreateCache("childOrderCache")
-    orderStore = new IgniteOrderStore(parentOrderCache, childOrderCache)
+    orderStore = new IgniteOrderStore(parentOrderCache, childOrderCache, ChildOrderSchema.create())
   }
 
   test("Ignite Store And Find Order") {
@@ -99,16 +100,16 @@ class IgniteOrderStoreTest extends AnyFunSuiteLike with BeforeAndAfter with Matc
 
   test("Ignite Store With Custom Sql Filters Include String") {
     var parentOrder: ParentOrder = GivenParentOrder(1)
-    parentOrder = GivenParentHasChildOrder(parentOrder, 1)
-    parentOrder = GivenParentHasChildOrder(parentOrder, 2)
-    parentOrder = GivenParentHasChildOrder(parentOrder, 3)
+    parentOrder = GivenParentHasChildOrder(parentOrder, 1, ric = "VOD.L")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 2, ric = "VOD.L")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 3, ric = "VOD.L")
 
     var parentOrder2: ParentOrder = GivenParentOrder(2)
-    parentOrder2 = GivenParentHasChildOrder(parentOrder2, 4)
-    parentOrder2 = GivenParentHasChildOrder(parentOrder2, 5)
-    parentOrder2 = GivenParentHasChildOrder(parentOrder2, 6)
+    parentOrder2 = GivenParentHasChildOrder(parentOrder2, 4, ric = "VOD.L")
+    parentOrder2 = GivenParentHasChildOrder(parentOrder2, 5, ric = "VOD.L")
+    parentOrder2 = GivenParentHasChildOrder(parentOrder2, 6, ric = "VOD.L")
 
-    val filterQueries = "ric = \'ric\'"
+    val filterQueries = "ric = \'VOD.L\'"
     val childOrder = orderStore.findChildOrder(filterQueries, emptySortQueries, 100, 0)
 
     assert(childOrder != null)
@@ -160,17 +161,67 @@ class IgniteOrderStoreTest extends AnyFunSuiteLike with BeforeAndAfter with Matc
     assert(childOrder.size == 3)
     childOrder.map(c => c.id).toArray shouldBe Array(2, 1, 3)
   }
+
+  test("Ignite Store Get Distinct Rics Limited By RowCount") {
+    var parentOrder: ParentOrder = GivenParentOrder(1)
+    parentOrder = GivenParentHasChildOrder(parentOrder, 1, "A")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 2, "B")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 3, "A")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 4, "D")
+
+    val distinctRics = orderStore.getDistinct("ric", 2)
+
+    assert(distinctRics != null)
+    assert(distinctRics.size == 2)
+    distinctRics.toArray shouldBe Array("A", "B")
+  }
+
+  //todo handle exception and report to ui
+  ignore("Ignite Store Get Distinct Rics Returns Empty When Column Does Not Exist") {
+    var parentOrder: ParentOrder = GivenParentOrder(1)
+    parentOrder = GivenParentHasChildOrder(parentOrder, 1, "A")
+
+    val distinctRics = orderStore.getDistinct("NoSuchColumn", 10)
+
+    assert(distinctRics != null)
+    assert(distinctRics.isEmpty)
+  }
+
+  test("Ignite Store Get Distinct Rics Starting With") {
+    var parentOrder: ParentOrder = GivenParentOrder(1)
+    parentOrder = GivenParentHasChildOrder(parentOrder, 1, "ABC")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 2, "ABL")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 3, "DAC")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 4, "ACD")
+
+    val distinctRics = orderStore.getDistinct("ric", "AB", 10)
+
+    assert(distinctRics != null)
+    assert(distinctRics.size == 2)
+    distinctRics.toArray shouldBe Array("ABC", "ABL")
+  }
+
+  test("Ignite Store Get Distinct Rics Starting With Returns Empty When No Match") {
+    var parentOrder: ParentOrder = GivenParentOrder(1)
+    parentOrder = GivenParentHasChildOrder(parentOrder, 1, "ABC")
+    parentOrder = GivenParentHasChildOrder(parentOrder, 2, "ABL")
+
+    val distinctRics = orderStore.getDistinct("ric", "X", 10)
+
+    assert(distinctRics != null)
+    assert(distinctRics.isEmpty)
+  }
   private def GivenParentOrder(parentOrderId: Int): ParentOrder = {
     val parentOrder = TestUtils.createParentOrder(parentOrderId)
     orderStore.storeParentOrder(parentOrder)
     parentOrder
   }
 
-  private def GivenParentHasChildOrder(parentOrder: ParentOrder, childOrderId: Int): ParentOrder = {
+  private def GivenParentHasChildOrder(parentOrder: ParentOrder, childOrderId: Int, ric:String = "AnyRic"): ParentOrder = {
     val updatedParentOrder = parentOrder.copy(activeChildren = parentOrder.activeChildren + 1)
     orderStore.storeChildOrder(
       updatedParentOrder,
-      TestUtils.createChildOrder(parentOrder.id, childOrderId))
+      TestUtils.createChildOrder(parentOrder.id, childOrderId, ric))
     updatedParentOrder
   }
 
