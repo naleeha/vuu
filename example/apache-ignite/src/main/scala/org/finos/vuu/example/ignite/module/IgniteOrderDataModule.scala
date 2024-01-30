@@ -5,7 +5,7 @@ import org.finos.toolbox.time.Clock
 import org.finos.vuu.api.ViewPortDef
 import org.finos.vuu.core.module.{DefaultModule, ModuleFactory, TableDefContainer, ViewServerModule}
 import org.finos.vuu.core.table.Columns
-import org.finos.vuu.example.ignite.IgniteOrderStore
+import org.finos.vuu.example.ignite.{IgniteColumnValueProvider, IgniteOrderStore}
 import org.finos.vuu.example.ignite.provider.IgniteOrderDataProvider
 import org.finos.vuu.net.rpc.RpcHandler
 import org.finos.vuu.plugin.virtualized.api.VirtualizedSessionTableDef
@@ -24,6 +24,7 @@ object IgniteOrderDataModule extends DefaultModule {
           Columns.fromNames("orderId".int(), "ric".string(), "quantity".int(), "price".double(), "side".string(), "strategy".string(), "parentOrderId".int())
         ),
         (table, _) => new IgniteOrderDataProvider(igniteOrderStore),
+        table => new IgniteColumnValueProvider(igniteOrderStore),
         (table, _, _, _) => ViewPortDef(
           columns = table.getTableDef.columns,
           service = new NoOpIgniteService()
