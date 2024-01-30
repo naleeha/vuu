@@ -25,7 +25,7 @@ object IgniteOrderStore {
    */
   def apply(clientMode: Boolean = true, persistenceEnabled: Boolean = false): IgniteOrderStore = {
     IgniteLocalConfig.setPersistenceEnabled(persistenceEnabled)
-    val childOrderSchema = ChildOrderSchema.create()
+
     val config = IgniteLocalConfig.create(clientMode = clientMode)
     val ignite = Ignition.getOrStart(config)
 
@@ -34,13 +34,12 @@ object IgniteOrderStore {
     val parentOrderCache = ignite.getOrCreateCache[Int, ParentOrder](IgniteLocalConfig.parentOrderCacheName)
     val childOrderCache = ignite.getOrCreateCache[Int, ChildOrder](IgniteLocalConfig.childOrderCacheName)
 
-    new IgniteOrderStore(parentOrderCache, childOrderCache, childOrderSchema)
+    new IgniteOrderStore(parentOrderCache, childOrderCache)
   }
 }
 
 class IgniteOrderStore(private val parentOrderCache: IgniteCache[Int, ParentOrder],
-                       private val childOrderCache: IgniteCache[Int, ChildOrder],
-                       val childOrderSchema: IgniteEntitySchema) extends OrderStore with StrictLogging {
+                       private val childOrderCache: IgniteCache[Int, ChildOrder]) extends OrderStore with StrictLogging {
 
   def storeParentOrder(parentOrder: ParentOrder): Unit = {
     parentOrderCache.put(parentOrder.id, parentOrder)

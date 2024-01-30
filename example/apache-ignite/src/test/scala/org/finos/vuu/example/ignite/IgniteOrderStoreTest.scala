@@ -21,7 +21,7 @@ class IgniteOrderStoreTest extends AnyFunSuiteLike with BeforeAndAfter with Matc
     ignite = TestUtils.setupIgnite()
     parentOrderCache = ignite.getOrCreateCache("parentOrderCache")
     childOrderCache = ignite.getOrCreateCache("childOrderCache")
-    orderStore = new IgniteOrderStore(parentOrderCache, childOrderCache, ChildOrderSchema.create())
+    orderStore = new IgniteOrderStore(parentOrderCache, childOrderCache)
   }
 
   test("Ignite Store And Find Order") {
