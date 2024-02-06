@@ -24,7 +24,6 @@ object IgniteOrderDataModule extends DefaultModule {
           Columns.fromNames("orderId".int(), "ric".string(), "quantity".int(), "price".double(), "side".string(), "strategy".string(), "parentOrderId".int())
         ),
         (table, _) => new IgniteOrderDataProvider(igniteOrderStore),
-        table => new IgniteColumnValueProvider(igniteOrderStore),
         (table, _, _, _) => ViewPortDef(
           columns = table.getTableDef.columns,
           service = new NoOpIgniteService()
